@@ -26,7 +26,6 @@ MainChainNode *free_list_head = NULL;  // Head of the free list
 void *mems_virtual_address = NULL;     // MeMS virtual address
 void *mems_physical_address = NULL;    // MeMS physical address
 
-
 void mems_init() {
     // Initialize MeMS system
     // Create the initial free list node with the whole available memory
@@ -123,47 +122,49 @@ void *mems_malloc(size_t size) {
 }
 
 void mems_print_stats() {
-    size_t pages_utilized = 0;
-    size_t unused_memory = 0;
-
-    MeMSSegment* current = free_list;
-    while (current) {
-        unused_memory += current->size;
-        pages_utilized++;
-        current = current->next;
+    // Print MeMS system statistics
+    int pages_used = 0;
+    size_t space_unused = 0;
+    MainChainNode *main_chain_node = free_list_head;
+    int main_chain_length = 0;
+    int sub_chain_lengths[100];  // Assuming a maximum of 100 sub-chains
+    for (int i = 0; i < 100; i++) {
+        sub_chain_lengths[i] = 0;
     }
 
-    printf("--------- Printing Stats [mems_print_stats] --------\n");
-    printf("---------------------MeMS SYSTEM STATS-----------------------\n\n");
+    printf("----- MEMS SYSTEM STATS -----\n");
 
-    current = free_list;
-
-    while (current) {
-        if (current == free_list) {
-            printf("MAIN[%lu:%lu] ->", (unsigned long)mems_virtual_address, (unsigned long)mems_virtual_address + current->size - 1);
-        } else {
-            printf("P[%lu:%lu]  <->", (unsigned long)current, (unsigned long)current + current->size - 1);
+    while (main_chain_node != NULL) {
+        main_chain_length++;
+        printf("MAIN[%p:%p]->", main_chain_node->start, main_chain_node->start + main_chain_node->size - 1);
+        SubChainNode *sub_chain_node = main_chain_node->sub_chain;
+        while (sub_chain_node != NULL) {
+            sub_chain_lengths[main_chain_length - 1]++;
+            if (sub_chain_node->type == 0) {
+                space_unused += sub_chain_node->size;
+                printf(" H[%p:%p] <->", sub_chain_node->start, sub_chain_node->start + sub_chain_node->size - 1);
+            } else {
+                pages_used++;
+                printf(" P[%p:%p] <->", sub_chain_node->start, sub_chain_node->start + sub_chain_node->size - 1);
+            }
+            sub_chain_node = sub_chain_node->next;
         }
-        current = current->next;
+        printf(" NULL\n");
+        main_chain_node = main_chain_node->next;
     }
 
-    printf("NULL\n");
-    printf("Pages used: %zu\n", pages_utilized);
-    printf("Space unused: %zu\n", unused_memory);
-    printf("Main Chain Length: %zu\n", pages_utilized);
-
-    current = free_list;
+    printf("Pages used: %d\n", pages_used);
+    printf("Space unused: %zu\n", space_unused);
+    printf("Main Chain Length: %d\n", main_chain_length);
     printf("Sub-chain Length array: [");
-    while (current) {
-        printf("%zu", current->size);
-        current = current->next;
-        if (current) {
+    for (int i = 0; i < main_chain_length; i++) {
+        printf("%d", sub_chain_lengths[i]);
+        if (i < main_chain_length - 1) {
             printf(", ");
         }
     }
     printf("]\n");
 }
-
 
 void *mems_get(void *v_ptr) {
     // Get MeMS physical address corresponding to the provided MeMS virtual address
