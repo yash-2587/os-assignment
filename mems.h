@@ -26,6 +26,83 @@ MainChainNode *free_list_head = NULL;  // Head of the free list
 void *mems_virtual_address = NULL;     // MeMS virtual address
 void *mems_physical_address = NULL;    // MeMS physical address
 
+void mems_compact() {
+    MainChainNode *current = free_list_head;
+
+    while (current != NULL) {
+        SubChainNode *sub_node = current->sub_chain;
+
+        while (sub_node != NULL) {
+            if (sub_node->type == 1) {
+                // This is a PROCESS segment, check if compaction is needed
+                if (sub_node->start != current->start) {
+                    // Move this PROCESS segment to a contiguous block in the main chain
+                    // Calculate the new position
+                    void *new_start = current->start;
+                    SubChainNode *prev_node = sub_node->prev;
+
+                    if (prev_node != NULL && prev_node->type == 0) {
+                        // Merge with the previous HOLE segment
+                        new_start = prev_node->start;
+                        prev_node->size += sub_node->size;
+                        prev_node->next = sub_node->next;
+
+                        if (sub_node->next != NULL) {
+                            sub_node->next->prev = prev_node;
+                        }
+
+                        free(sub_node);
+                        sub_node = prev_node;
+                    } else {
+                        sub_node->start = new_start;
+                    }
+
+                    // Update the sub-chain and the current MainChainNode
+                    if (sub_node->start != current->start) {
+                        current->start = new_start;
+                    }
+                }
+            }
+
+            sub_node = sub_node->next;
+        }
+
+        current = current->next;
+    }
+}
+
+void perform_memory_management() {
+    // Check if there's a specific condition that triggers compaction, such as when a certain amount of memory is freed or periodically.
+    // You can adapt this logic based on your application's needs.
+
+    // For example, you can check if a certain percentage of memory is unused.
+    double unused_memory_percentage = 0.2; // 20%
+    
+    // Calculate the total available memory and unused memory.
+    size_t total_memory = 0;
+    size_t unused_memory = 0;
+
+    MainChainNode *main_chain_node = free_list_head;
+    while (main_chain_node != NULL) {
+        total_memory += main_chain_node->size;
+        
+        SubChainNode *sub_chain_node = main_chain_node->sub_chain;
+        while (sub_chain_node != NULL) {
+            if (sub_chain_node->type == 0) {
+                unused_memory += sub_chain_node->size;
+            }
+            sub_chain_node = sub_chain_node->next;
+        }
+        
+        main_chain_node = main_chain_node->next;
+    }
+
+    // Check if the unused memory percentage is greater than a threshold.
+    if ((double)unused_memory / total_memory >= unused_memory_percentage) {
+        mems_compact();
+    }
+}
+
 void mems_init() {
     // Initialize MeMS system
     // Create the initial free list node with the whole available memory
@@ -46,10 +123,12 @@ void mems_init() {
 void mems_finish() {
     // Unmap allocated memory
     if (mems_virtual_address) {
-        munmap(mems_virtual_address, PAGE_SIZE);
+        if (munmap(mems_virtual_address, PAGE_SIZE) == -1) {
+            perror("munmap");
+            exit(1);
+        }
     }
 }
-
 
 void *mems_malloc(size_t size) {
     // Allocate memory using MeMS
@@ -233,5 +312,8 @@ void mems_free(void *v_ptr) {
             }
             main_chain_node = main_chain_node->next;
         }
+
+        // Update mems_virtual_address to the start of the first HOLE in the merged sequence.
+        mems_virtual_address = free_list_head->sub_chain->start;
     }
 }
