@@ -93,6 +93,8 @@ void perform_memory_management() {
 }
 
 void mems_init() {
+    space_unused_main_chain = PAGE_SIZE;
+
     MainChainNode *main_chain_node = (MainChainNode *)mmap((void *)1000, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (main_chain_node == MAP_FAILED) {
         perror("mmap");
@@ -107,7 +109,6 @@ void mems_init() {
     mems_virtual_address = main_chain_node;
     virtual_address_counter = 1000;
 }
-
 
 void mems_finish() {
     if (mems_virtual_address) {
@@ -145,6 +146,11 @@ SubChainNode *create_sub_chain_node(size_t size) {
 }
 void *mems_malloc(size_t size) {
     MainChainNode *main_chain_node = free_list_head;
+     space_unused = space_unused_main_chain;
+    size_t remaining_space_in_page = PAGE_SIZE - (last_virtual_address % PAGE_SIZE);
+    if (remaining_space_in_page < size) {
+        space_unused += remaining_space_in_page;
+    }
     if (main_chain_node == NULL) {
         main_chain_node = create_main_chain_node();
         main_chain_node->start = (void *)1000;
@@ -184,16 +190,17 @@ void *mems_malloc(size_t size) {
 
     space_unused_main_chain -= size;
     space_unused = space_unused_main_chain;
+
     return new_sub_node->start;
 }
 
 void mems_print_stats() {
-    // Print MeMS system statistics
-    size_t pages_used = 0;
-    size_t space_unused = 0;
+    
+    int pages_used = 0;
+    long long space_unused = (long long)space_unused_main_chain; 
     MainChainNode *main_chain_node = free_list_head;
     int main_chain_length = 0;
-    int sub_chain_lengths[100];
+    int sub_chain_lengths[100]; 
     for (int i = 0; i < 100; i++) {
         sub_chain_lengths[i] = 0;
     }
@@ -214,17 +221,19 @@ void mems_print_stats() {
                 space_unused += sub_chain_node->size;
                 printf(" H[%zu:%zu] <->", sub_start, sub_end);
             } else {
-                pages_used++;
+                
                 printf(" P[%zu:%zu] <->", sub_start, sub_end);
             }
+            
             sub_chain_node = sub_chain_node->next;
         }
+        pages_used++;
         printf(" NULL\n");
         main_chain_node = main_chain_node->next;
     }
 
-    printf("Pages used: %d\n",main_chain_length );
-    printf("Space unused: %zu\n", space_unused);
+    printf("Pages used: %d\n", pages_used);
+    printf("Space unused: %lld\n", space_unused);
     printf("Main Chain Length: %d\n", main_chain_length);
     printf("Sub-chain Length array: [");
     for (int i = 0; i < main_chain_length; i++) {
@@ -235,6 +244,8 @@ void mems_print_stats() {
     }
     printf("]\n");
 }
+
+
 
 void *mems_get(void *v_ptr) {
     size_t virtual_address = (size_t)v_ptr;
